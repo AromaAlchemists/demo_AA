@@ -3,17 +3,19 @@ from langchain_core.runnables import RunnableLambda, RunnablePassthrough
 from langchain_core.callbacks import BaseCallbackHandler
 from langchain.embeddings import CacheBackedEmbeddings
 from langchain.storage import LocalFileStore
-from langchain_community.chat_models import ChatOpenAI
-from langchain_community.embeddings import OpenAIEmbeddings
 from langchain_community.document_loaders import UnstructuredFileLoader
 from langchain_text_splitters import CharacterTextSplitter
 from langchain_chroma import Chroma
+from langchain_openai import ChatOpenAI, OpenAIEmbeddings
 import streamlit as st
+
 
 st.set_page_config(
     page_title="Aroma Alchemist - AA",
     page_icon="🧴",
 )
+
+st.session_state["messages"] = []
 
 
 class ChatCallbackHandler(BaseCallbackHandler):
@@ -66,10 +68,12 @@ def save_message(message, role):
 
 
 def send_message(message, role, save=True):
+    if save:
+        # if "messages" not in st.session_state:
+        #    st.session_state["messages"] = []
+        save_message(message, role)
     with st.chat_message(role):
         st.markdown(message)
-    if save:
-        save_message(message, role)
 
 
 def paint_history():
@@ -90,9 +94,8 @@ prompt = ChatPromptTemplate.from_messages(
         (
             "system",
             """
-            You are personal perfume adviser. You recommend 5 perfumes based on the user's preferences. 
-            When you make Recommendation, you must be look up the following context first.
-            If you don't know the answer just say you don't know. DON'T make anything up.
+            You are personal perfume adviser. You recommend perfumes based on the context ONLY.
+            If you don't have the answer just say you don't know. DON'T make anything up.
             
             Context: {context}
             """,
@@ -102,42 +105,86 @@ prompt = ChatPromptTemplate.from_messages(
 )
 
 
+# UI starts from here
 st.title("Aroma Alchemist")
 
 st.markdown(
     """
 Welcome!
-            
-I'm your personal perfume adviser. 
 
-Upload reviews on the sidebar.
+I'm your personal perfume advisor.
+
+You can tell me what type of perfume you're looking for, or simply select your preferences on the sidebar for a quick recommendation!
 """
 )
 
+
 with st.sidebar:
-    file = st.file_uploader(
-        "Upload a .txt .pdf or .docx file",
-        type=["pdf", "txt", "docx"],
+    st.title("Preferences")
+    gender = st.radio("Gender:", ["Male", "Female", "Not specified"])
+    age_group = st.radio("Age group:", ["10s-20s", "30s-40s", "50s+", "Not specified"])
+    season = st.radio(
+        "Season:", ["Spring", "Summer", "Fall", "Winter", "Not specified"]
     )
+    submit_button = st.button("Submit Preferences")
+
+
+file = st.file_uploader(
+    "Upload reviews for embedding (.txt .pdf or .docx file)",
+    type=["pdf", "txt", "docx"],
+)
 
 if file:
     retriever = embed_file(file)
-    send_message("I'm ready! Ask away!", "ai", save=False)
-    paint_history()
-    message = st.chat_input("Ask anything about your file...")
-    if message:
-        send_message(message, "human")
-        chain = (
-            {
-                "context": retriever | RunnableLambda(format_docs),
-                "question": RunnablePassthrough(),
-            }
-            | prompt
-            | llm
-        )
-        with st.chat_message("ai"):
-            chain.invoke(message)
 
 
-else:
-    st.session_state["messages"] = []
+send_message(
+    "Hello! I'm here to help you find the perfect scent. What specific qualities or preferences are you looking for in a perfume?",
+    "ai",
+    save=False,
+)
+paint_history()
+message = st.chat_input("Enter your fragrance preferences...")
+if message:
+    send_message(message, "human")
+    chain = (
+        {
+            "context": retriever | RunnableLambda(format_docs),
+            "question": RunnablePassthrough(),
+        }
+        | prompt
+        | llm
+    )
+    with st.chat_message("ai"):
+        chain.invoke(message)
+
+if submit_button:
+    preferences_msg = f"Gender: {gender}, Age Group: {age_group}, Season: {season}"
+    send_message(preferences_msg, "human")
+    chain = (
+        {
+            "context": retriever | RunnableLambda(format_docs),
+            "question": RunnablePassthrough(),
+        }
+        | prompt
+        | llm
+    )
+    with st.chat_message("ai"):
+        chain.invoke(preferences_msg)
+    # message = st.text_input(
+    #    "Enter your fragrance preferences...", key="fragrance_prefs"
+    # )
+
+    # if message:
+    #    send_message(message, "human")
+    #    context = f"{preferences_msg}. Additional preferences: {message}"
+    #    chain = (
+    #        {
+    #            "context": context,
+    #            "question": message,
+    #        }
+    #        | prompt
+    #        | llm
+    #    )
+    #    response = chain.invoke(message)
+    #    send_message(response, "ai")
