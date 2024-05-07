@@ -1,0 +1,4 @@
+venv_AA/
+.env
+commands.txt
+.cache/

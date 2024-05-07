@@ -1,0 +1,6 @@
+langchain_chroma==0.1.0
+langchain==0.1.17
+streamlit==1.34.0
+openai==1.26.0
+tiktoken==0.6.0
+unstructured==0.11.8
